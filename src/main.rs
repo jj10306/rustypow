@@ -59,24 +59,39 @@ impl Config {
 }
 
 struct ReservatioInfo {
-    inner: HashMap<String, HashMap<String, Vec<String>>>
+    //inner: HashMap<String, HashMap<String, Vec<String>>>
+    a:u32
 }
 impl ReservatioInfo {
     fn new(path: &str) -> ReservatioInfo {
-        let file = File::open("config/settings.json").expect("Error openenign file");
+        let file = File::open("config/info.json").expect("Error openenign file");
         let reader = BufReader::new(file);
 
         // Read the JSON contents of the file as an instance of `User`.
         let v: Value = serde_json::from_reader(reader).expect("Error when parsing json");
         match(v) {
-            Value::Object(map) => {
-                println!()
-                map
+            Value::Object(email_map) => {
+                for email in email_map.keys() {
+                    let object = email_map.get(email).unwrap();
+                    match(object) {
+                        Value::Object(location_map) => {
+                            for location in location_map.keys() {
+                                let dates = location_map.get(location).unwrap().as_array().expect("Should be an array");
+                                for date in dates.iter() {
+                                    let date = date.as_str().unwrap();
+                                    println!("{} {} {}", email, location, date);
+                                }
+                            } 
+                        },
+                        _ => panic!("should have been an object")
+                    }
+                }
             },
             _ => panic!("should have been an object")
         }
         
         
+        ReservatioInfo {a:1} 
     }
 }
 
