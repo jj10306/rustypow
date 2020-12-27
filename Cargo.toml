@@ -1,5 +1,5 @@
 [package]
-name = "rusty-pow"
+name = "rustypow"
 version = "0.1.0"
 authors = ["Jakob Johnson <johnsonjakob99@gmail.com>"]
 edition = "2018"

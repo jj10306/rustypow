@@ -810,7 +810,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rusty-pow"
+name = "rustypow"
 version = "0.1.0"
 dependencies = [
  "serde",
