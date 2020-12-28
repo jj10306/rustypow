@@ -10,12 +10,15 @@ use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
 
+use lettre::transport::smtp::authentication::Credentials;
+use lettre::{Message, SmtpTransport, Transport};
+
 #[derive(Deserialize)]
 pub struct Config {
     url: String,
     login_email: String,
     login_password: String,
-    notify_email: String,
+    notify_username: String,
     notify_password: String 
 }
 impl Config {
@@ -41,8 +44,8 @@ impl Config {
         &self.login_password
     }
 
-    fn get_notify_email(&self) -> &str {
-        &self.notify_email
+    fn get_notify_username(&self) -> &str {
+        &self.notify_username
     }
 
     fn get_notify_password(&self) -> &str {
@@ -117,7 +120,7 @@ impl ReservationInfo {
 pub struct PowSniper {
     driver: WebDriver,
     config: Config,
-    pub reservations: ReservationInfo
+    reservations: ReservationInfo
 }
 impl PowSniper {
     pub fn new(driver_url: &str, config: Config, reservations: ReservationInfo) -> WebDriverResult<PowSniper> {
@@ -175,7 +178,7 @@ impl PowSniper {
                     if date == available_date {
                         let emails = self.reservations.get_emails(location, date);
                         for email in emails.iter() {
-                            println!("{} {} {}", email, date, location);
+                            self.notify(email, location, date);
                         }
                     }
                 }
@@ -183,4 +186,30 @@ impl PowSniper {
         }
         Ok(())
     }
+
+    fn notify(&self, email: &str, location: &str, date: &str) -> WebDriverResult<()> {
+        let url = "https://account.ikonpass.com/en/myaccount/add-reservations/";
+        let email = Message::builder()
+            .from(format!("Ikon Pass Reservation <{}@gmail.com>", self.config.get_notify_username()).parse().unwrap())
+            .to(format!("<{}>", email).parse().unwrap())
+            .subject(format!("{} Reservation Available", location))
+            .body(format!("{} at {} is now available!\n Click the link below to reserve your spot:\n {}", date, location, url))
+            .unwrap();
+
+        let creds = Credentials::new(self.config.get_notify_username().to_string(), self.config.get_notify_password().to_string());
+
+        // Open a remote connection to gmail
+        let mailer = SmtpTransport::relay("smtp.gmail.com")
+            .unwrap()
+            .credentials(creds)
+            .build();
+
+        // Send the email
+        match mailer.send(&email) {
+            Ok(_) => println!("Email sent successfully!"),
+            Err(e) => panic!("Could not send email: {:?}", e),
+        }
+        Ok(())
+    }
 }
+
