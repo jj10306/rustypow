@@ -2,7 +2,6 @@ use thirtyfour_sync::prelude::*;
 use std::vec::Vec;
 use std::string::String;
 use std::collections::HashMap;
-use std::{thread, time};
 
 use serde::Deserialize;
 use serde_json::Value;
@@ -79,7 +78,6 @@ impl ReservationInfo {
                                 let dates = location_map.get(location).unwrap().as_array().expect("Should be an array");
                                 for date in dates.iter() {
                                     let date = date.as_str().unwrap().to_string();
-                                    println!("{} {} {}", email, location, date);
                                     if (inner.contains_key(location)){
                                         let day_map = inner.get_mut(location).unwrap();
                                         if (day_map.contains_key(&date)) {
@@ -130,15 +128,11 @@ impl PowSniper {
 
     pub fn run(&self) {
         let locations = self.reservations.get_locations();
-        let wait = time::Duration::from_secs(10);
-        while true {
-            for location in locations.iter() {
-                self.login();
-                self.click_reservation_button();
-                self.navigate_to_reservation_page(location);
-                self.monitor_availability(location);
-            }
-            thread::sleep(wait);
+        for location in locations.iter() {
+            self.login();
+            self.click_reservation_button();
+            self.navigate_to_reservation_page(location);
+            self.monitor_availability(location);
         }
     }
     fn login(&self) -> WebDriverResult<()> {
@@ -174,33 +168,19 @@ impl PowSniper {
         for day in days.iter() {
             let curr_class = day.get_attribute("class")?.expect("No attribute named 'class'");
             if curr_class == "DayPicker-Day" {
-                let available_date = day.get_attribute("aria-label")?.expect("No attribute named 'aria-label'");
-                println!("{:?}", available_date);
-                for date in self.reservations.get_dates(location).iter() {
-                   println!("{:?}", date); 
+                let raw_available_date = day.get_attribute("aria-label")?.expect("No attribute named 'aria-label'");
+                let split_dates: Vec<&str> = raw_available_date.split(' ').collect();
+                let available_date = &split_dates[1..3].join(" ");
+                for &date in self.reservations.get_dates(location).iter() {
+                    if date == available_date {
+                        let emails = self.reservations.get_emails(location, date);
+                        for email in emails.iter() {
+                            println!("{} {} {}", email, date, location);
+                        }
+                    }
                 }
             }
         }
         Ok(())
     }
-//    def monitor_availability(dates, location):
-//        # go to january
-//        next_month_button = wait_for_element_by_xpath('//*[@id="root"]/div/div/main/section[2]/div/div[2]/div[3]/div[1]/div[1]/div[1]/div/div[1]/div[2]/button[2]')
-//        next_month_button.click()
-//
-//        days = driver.find_elements_by_class_name("DayPicker-Day") 
-//        for day in days:
-//            curr_class = day.get_attribute("class")
-//            # this doesn't include the day of because that element has an additional class
-//            if curr_class == "DayPicker-Day":
-//                # available date is of the form: Jan 22
-//                available_date = " ".join(day.get_attribute("aria-label").split()[1:3])
-//                for date in dates:
-//                    if date == available_date:
-//                        message = f"{available_date} is available at {location}"
-//                        notify.send_email("jjohnson473@gatech.edu", message)
-//                        notify.send_email("zakcho25@gmail.com ", message)
-//                        logging.info(message)
-   
-    
 }
