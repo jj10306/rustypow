@@ -1,19 +1,18 @@
-use thirtyfour_sync::prelude::*;
 use std::vec::Vec;
 use std::string::String;
 use std::collections::{HashSet, HashMap};
 use std::{thread, time};
 use std::cell::RefCell;
-
-use serde::Deserialize;
-use serde_json::Value;
 use std::error::Error;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
-
+use thirtyfour_sync::prelude::*;
+use serde::Deserialize;
+use serde_json::Value;
 use lettre::transport::smtp::authentication::Credentials;
 use lettre::{Message, SmtpTransport, Transport};
+use log;
 
 #[derive(Deserialize)]
 pub struct Config {
@@ -139,7 +138,7 @@ impl PowSniper {
         let locations = self.reservations.get_locations();
         loop {
             for location in locations.iter() {
-                println!("{}", location);
+                log::debug!("Running... Checking {}", location);
                 self.click_reservation_button()?;
                 self.navigate_to_reservation_page(location)?;
                 self.monitor_availability(location)?;
@@ -193,16 +192,15 @@ impl PowSniper {
                         if date == available_date {
                             // if the val isn't in the set, this is a new availability and thus
                             // notifications should be sent
-                            println!("{} - {:?}", val, self.current_available);
                             let emails = self.reservations.get_emails(location, date);
                             for email in emails.iter() {
+                                log::info!("Sending email to {} for {} at {}", email, date, location);
                                 self.notify(email, location, date);
                             }
                         }
                     }
                 } 
             } else {
-                    println!("else - {}", val);
                     self.current_available.borrow_mut().remove(&val);
             }
         } 
@@ -214,7 +212,7 @@ impl PowSniper {
         let email = Message::builder()
             .from(format!("testing <{}@gmail.com>", self.config.get_notify_username()).parse().unwrap())
             .to(format!("<{}>", email).parse().unwrap())
-            .subject(format!("{} meow", location))
+            .subject(format!("{} Reservation", location))
             .body(format!("{} at {} is now available!\n Click the link below to reserve your spot:\n {}", date, location, url))
             .unwrap();
 
@@ -228,8 +226,8 @@ impl PowSniper {
 
         // Send the email
         match mailer.send(&email) {
-            Ok(_) => println!("Email sent successfully!"),
-            Err(e) => panic!("Could not send email: {:?}", e),
+            Ok(_) => log::info!("Email sent successfully!"),
+            Err(e) => log::error!("Could not send email: {:?}", e),
         }
         Ok(())
     }
