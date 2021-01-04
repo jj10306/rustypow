@@ -210,7 +210,7 @@ impl PowSniper {
     fn notify(&self, email: &str, location: &str, date: &str) -> WebDriverResult<()> {
         let url = "https://account.ikonpass.com/en/myaccount/add-reservations/";
         let email = Message::builder()
-            .from(format!("testing <{}@gmail.com>", self.config.get_notify_username()).parse().unwrap())
+            .from(format!("Ikon Pass Reservations <{}@gmail.com>", self.config.get_notify_username()).parse().unwrap())
             .to(format!("<{}>", email).parse().unwrap())
             .subject(format!("{} Reservation", location))
             .body(format!("{} at {} is now available!\n Click the link below to reserve your spot:\n {}", date, location, url))
