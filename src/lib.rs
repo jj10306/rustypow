@@ -1,7 +1,9 @@
 use thirtyfour_sync::prelude::*;
 use std::vec::Vec;
 use std::string::String;
-use std::collections::HashMap;
+use std::collections::{HashSet, HashMap};
+use std::{thread, time};
+use std::cell::RefCell;
 
 use serde::Deserialize;
 use serde_json::Value;
@@ -120,24 +122,34 @@ impl ReservationInfo {
 pub struct PowSniper {
     driver: WebDriver,
     config: Config,
-    reservations: ReservationInfo
+    reservations: ReservationInfo,
+    current_available: RefCell<HashSet<String>>
 }
 impl PowSniper {
     pub fn new(driver_url: &str, config: Config, reservations: ReservationInfo) -> WebDriverResult<PowSniper> {
         let caps = DesiredCapabilities::chrome();
         let driver = WebDriver::new(driver_url, &caps)?;
-        Ok(PowSniper { driver, config, reservations })
+        let current_available = RefCell::new(HashSet::new());
+        Ok(PowSniper { driver, config, reservations, current_available })
     }
 
-    pub fn run(&self) {
+    pub fn run(&self) -> WebDriverResult<()> {
+        self.login();
+        let wait = time::Duration::from_secs(5);
         let locations = self.reservations.get_locations();
-        for location in locations.iter() {
-            self.login();
-            self.click_reservation_button();
-            self.navigate_to_reservation_page(location);
-            self.monitor_availability(location);
+        loop {
+            for location in locations.iter() {
+                println!("{}", location);
+                self.click_reservation_button()?;
+                self.navigate_to_reservation_page(location)?;
+                self.monitor_availability(location)?;
+                self.redirect()?;
+            }
+            thread::sleep(wait);
         }
+        Ok(())
     }
+
     fn login(&self) -> WebDriverResult<()> {
         self.driver.get(self.config.get_url())?;
         let email_input = self.driver.find_element(By::Id("email"))?;
@@ -164,35 +176,45 @@ impl PowSniper {
     }
     
     fn monitor_availability(&self, location: &str) -> WebDriverResult<()> {
-        let next_month_button = self.driver.find_element(By::XPath("//*[@id=\"root\"]/div/div/main/section[2]/div/div[2]/div[3]/div[1]/div[1]/div[1]/div/div[1]/div[2]/button[2]"))?.click()?; 
+    //    let next_month_button = self.driver.find_element(By::XPath("//*[@id=\"root\"]/div/div/main/section[2]/div/div[2]/div[3]/div[1]/div[1]/div[1]/div/div[1]/div[2]/button[2]"))?.click()?; 
 
         let days = self.driver.find_elements(By::ClassName("DayPicker-Day"))?;
 
         for day in days.iter() {
             let curr_class = day.get_attribute("class")?.expect("No attribute named 'class'");
+            let raw_available_date = day.get_attribute("aria-label")?.expect("No attribute named 'aria-label'");
+            let split_dates: Vec<&str> = raw_available_date.split(' ').collect();
+            let available_date = &split_dates[1..3].join(" ");
+            let val = available_date.to_string() + location;
             if curr_class == "DayPicker-Day" {
-                let raw_available_date = day.get_attribute("aria-label")?.expect("No attribute named 'aria-label'");
-                let split_dates: Vec<&str> = raw_available_date.split(' ').collect();
-                let available_date = &split_dates[1..3].join(" ");
-                for &date in self.reservations.get_dates(location).iter() {
-                    if date == available_date {
-                        let emails = self.reservations.get_emails(location, date);
-                        for email in emails.iter() {
-                            self.notify(email, location, date);
+                // if the val isn't in the set then send notifications if it's a day of interest
+                if self.current_available.borrow_mut().insert(val.clone()) {
+                    for &date in self.reservations.get_dates(location).iter() {
+                        if date == available_date {
+                            // if the val isn't in the set, this is a new availability and thus
+                            // notifications should be sent
+                            println!("{} - {:?}", val, self.current_available);
+                            let emails = self.reservations.get_emails(location, date);
+                            for email in emails.iter() {
+                                self.notify(email, location, date);
+                            }
                         }
                     }
-                }
+                } 
+            } else {
+                    println!("else - {}", val);
+                    self.current_available.borrow_mut().remove(&val);
             }
-        }
+        } 
         Ok(())
     }
 
     fn notify(&self, email: &str, location: &str, date: &str) -> WebDriverResult<()> {
         let url = "https://account.ikonpass.com/en/myaccount/add-reservations/";
         let email = Message::builder()
-            .from(format!("Ikon Pass Reservation <{}@gmail.com>", self.config.get_notify_username()).parse().unwrap())
+            .from(format!("testing <{}@gmail.com>", self.config.get_notify_username()).parse().unwrap())
             .to(format!("<{}>", email).parse().unwrap())
-            .subject(format!("{} Reservation Available", location))
+            .subject(format!("{} meow", location))
             .body(format!("{} at {} is now available!\n Click the link below to reserve your spot:\n {}", date, location, url))
             .unwrap();
 
@@ -210,6 +232,10 @@ impl PowSniper {
             Err(e) => panic!("Could not send email: {:?}", e),
         }
         Ok(())
+    }
+
+    fn redirect(&self) -> WebDriverResult<()> {
+        self.driver.get(self.config.get_url())
     }
 }
 
