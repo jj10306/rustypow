@@ -1,5 +1,6 @@
 use std::vec::Vec;
 use std::string::String;
+use std::boxed::Box;
 use std::collections::{HashSet, HashMap};
 use std::{thread, time};
 use std::cell::RefCell;
@@ -13,6 +14,8 @@ use serde_json::Value;
 use lettre::transport::smtp::authentication::Credentials;
 use lettre::{Message, SmtpTransport, Transport};
 use log;
+use percent_encoding::percent_decode;
+use reqwest::header::HeaderName;
 
 #[derive(Deserialize)]
 pub struct Config {
@@ -243,3 +246,47 @@ impl PowSniper {
     }
 }
 
+pub struct ApiPowSniper {
+    client: reqwest::blocking::Client,
+    config: Config,
+    reservations: ReservationInfo,
+    current_available: RefCell<HashSet<String>>
+}
+impl ApiPowSniper {
+    pub fn new(config: Config, reservations: ReservationInfo) -> Result<ApiPowSniper, Box<dyn std::error::Error>> {
+        let client = reqwest::blocking::Client::builder().cookie_store(true).build()?;
+        let current_available = RefCell::new(HashSet::new());
+        Ok(ApiPowSniper { client, config, reservations, current_available })
+    }
+
+    pub fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let wait = time::Duration::from_secs(30);
+        let locations = self.reservations.get_locations();
+        let token = self.ping()?;
+        let decoded = percent_decode(token.as_bytes()).decode_utf8().unwrap().into_owned();
+
+        let session_url = "https://account.ikonpass.com/session";
+        let mut map = HashMap::new();
+        map.insert("email", "johnsonjakob99@gmail.com");
+        map.insert("password", "Johnson99");
+        let session_resp = self.client.put(session_url).header("x-csrf-token", decoded).json(&map).send()?;
+        for cookie in session_resp.cookies() {
+            if cookie.name() == "PROD-XSRF-TOKEN" {
+                return Ok(cookie.value().to_string());
+            }
+        }
+        println!("{:?}", session_resp);
+        Ok(())
+    }
+
+    pub fn ping(&self) -> Result<String, Box<dyn std::error::Error>> { 
+        let ping_url = "https://account.ikonpass.com/api/v2/ping";
+        let ping_resp = self.client.get(ping_url).send()?;
+        for cookie in ping_resp.cookies() {
+            if cookie.name() == "PROD-XSRF-TOKEN" {
+                return Ok(cookie.value().to_string());
+            }
+        }
+        Err("No token found".into())
+    }
+}
