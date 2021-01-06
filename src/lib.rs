@@ -262,20 +262,9 @@ impl ApiPowSniper {
     pub fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
         let wait = time::Duration::from_secs(30);
         let locations = self.reservations.get_locations();
-        let token = self.ping()?;
-        let decoded = percent_decode(token.as_bytes()).decode_utf8().unwrap().into_owned();
-
-        let session_url = "https://account.ikonpass.com/session";
-        let mut map = HashMap::new();
-        map.insert("email", "johnsonjakob99@gmail.com");
-        map.insert("password", "Johnson99");
-        let session_resp = self.client.put(session_url).header("x-csrf-token", decoded).json(&map).send()?;
-        for cookie in session_resp.cookies() {
-            if cookie.name() == "PROD-XSRF-TOKEN" {
-                return Ok(cookie.value().to_string());
-            }
-        }
-        println!("{:?}", session_resp);
+        let ping_token = self.ping()?;
+        let session_token = self.session(ping_token)?;
+        self.reservation_request(session_token)?;
         Ok(())
     }
 
@@ -284,9 +273,35 @@ impl ApiPowSniper {
         let ping_resp = self.client.get(ping_url).send()?;
         for cookie in ping_resp.cookies() {
             if cookie.name() == "PROD-XSRF-TOKEN" {
-                return Ok(cookie.value().to_string());
+                let raw_token = cookie.value().to_string();
+                let decoded_token = percent_decode(raw_token.as_bytes()).decode_utf8().unwrap().into_owned(); 
+                return Ok(decoded_token);
             }
         }
         Err("No token found".into())
+    }
+    pub fn session(&self, token: String) -> Result<String, Box<dyn std::error::Error>> { 
+        let session_url = "https://account.ikonpass.com/session";
+        let mut map = HashMap::new();
+        map.insert("email", "johnsonjakob99@gmail.com");
+        map.insert("password", "Johnson99");
+        let session_resp = self.client.put(session_url).header("x-csrf-token", token).json(&map).send()?;
+        for cookie in session_resp.cookies() {
+            if cookie.name() == "_itw_iaa_prod_session" {
+                let raw_token = cookie.value().to_string();
+                let decoded_token = percent_decode(raw_token.as_bytes()).decode_utf8().unwrap().into_owned(); 
+                return Ok(decoded_token);
+            }
+        }
+        Err("No token found".into())
+    }
+
+    pub fn reservation_request(&self, toke: String) -> Result<(), Box<dyn std::error::Error>>  {
+        let url = "https://account.ikonpass.com/api/v2/reservation-availability/8";
+        let resp = self.client.get(url).send()?;
+        let body_str = resp.text().unwrap();
+        let v: Value = serde_json::from_str(&body_str)?;
+        println!("{:#?}", v);
+        Ok(())
     }
 }
