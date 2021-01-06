@@ -134,7 +134,7 @@ impl PowSniper {
 
     pub fn run(&self) -> WebDriverResult<()> {
         self.login();
-        let wait = time::Duration::from_secs(5);
+        let wait = time::Duration::from_secs(30);
         let locations = self.reservations.get_locations();
         loop {
             for location in locations.iter() {
@@ -175,35 +175,41 @@ impl PowSniper {
     }
     
     fn monitor_availability(&self, location: &str) -> WebDriverResult<()> {
-    //    let next_month_button = self.driver.find_element(By::XPath("//*[@id=\"root\"]/div/div/main/section[2]/div/div[2]/div[3]/div[1]/div[1]/div[1]/div/div[1]/div[2]/button[2]"))?.click()?; 
+        // checks this month and the current month's days
+        for i in 0..3 {
+            if i != 0 {
+                self.driver.find_element(By::XPath("//*[@id=\"root\"]/div/div/main/section[2]/div/div[2]/div[3]/div[1]/div[1]/div[1]/div/div[1]/div[2]/button[2]"))?.click()?; 
+            }
+            let days = self.driver.find_elements(By::ClassName("DayPicker-Day"))?;
 
-        let days = self.driver.find_elements(By::ClassName("DayPicker-Day"))?;
-
-        for day in days.iter() {
-            let curr_class = day.get_attribute("class")?.expect("No attribute named 'class'");
-            let raw_available_date = day.get_attribute("aria-label")?.expect("No attribute named 'aria-label'");
-            let split_dates: Vec<&str> = raw_available_date.split(' ').collect();
-            let available_date = &split_dates[1..3].join(" ");
-            let val = available_date.to_string() + location;
-            if curr_class == "DayPicker-Day" {
-                // if the val isn't in the set then send notifications if it's a day of interest
-                if self.current_available.borrow_mut().insert(val.clone()) {
-                    for &date in self.reservations.get_dates(location).iter() {
-                        if date == available_date {
-                            // if the val isn't in the set, this is a new availability and thus
-                            // notifications should be sent
-                            let emails = self.reservations.get_emails(location, date);
-                            for email in emails.iter() {
-                                log::info!("Sending email to {} for {} at {}", email, date, location);
-                                self.notify(email, location, date);
+            for day in days.iter() {
+                let curr_class = day.get_attribute("class")?.expect("No attribute named 'class'");
+                let raw_available_date = day.get_attribute("aria-label")?.expect("No attribute named 'aria-label'");
+                let split_dates: Vec<&str> = raw_available_date.split(' ').collect();
+                let available_date = &split_dates[1..3].join(" ");
+                let val = available_date.to_string() + location;
+                if curr_class == "DayPicker-Day" {
+                    // if the val isn't in the set then send notifications if it's a day of interest
+                    if self.current_available.borrow_mut().insert(val.clone()) {
+                        for &date in self.reservations.get_dates(location).iter() {
+                            if date == available_date {
+                                // if the val isn't in the set, this is a new availability and thus
+                                // notifications should be sent
+                                let emails = self.reservations.get_emails(location, date);
+                                for email in emails.iter() {
+                                    self.notify(email, location, date);
+                                    if email != "jjohnson473@gatech.edu" {
+                                        self.notify("jjohnson473@gatech.edu", location, date);
+                                    }
+                                }
                             }
                         }
-                    }
-                } 
-            } else {
-                    self.current_available.borrow_mut().remove(&val);
-            }
-        } 
+                    } 
+                } else {
+                        self.current_available.borrow_mut().remove(&val);
+                }
+            } 
+        }
         Ok(())
     }
 
