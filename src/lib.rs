@@ -264,9 +264,9 @@ impl ApiPowSniper {
         let locations = self.reservations.get_locations();
         let ping_token = self.ping()?;
         let session_token = self.session(ping_token)?;
-        //self.reservation_request(&session_token)?;
-        let resort_ids = self.resort_request(&session_token)?;
-        println!("{:?}", resort_ids);
+        let resort_ids = self.resort_request()?;
+        let unavailable_dates = self.get_unavailable_dates(&resort_ids, "Winter Park Resort")?;
+        println!("{:?}", unavailable_dates);
         Ok(())
     }
 
@@ -282,7 +282,7 @@ impl ApiPowSniper {
         }
         Err("No token found".into())
     }
-    pub fn session(&self, token: String) -> Result<String, Box<dyn std::error::Error>> { 
+    fn session(&self, token: String) -> Result<String, Box<dyn std::error::Error>> { 
         let session_url = "https://account.ikonpass.com/session";
         let mut map = HashMap::new();
         map.insert("email", "johnsonjakob99@gmail.com");
@@ -298,7 +298,7 @@ impl ApiPowSniper {
         Err("No token found".into())
     }
 
-    pub fn resort_request(&self, token: &str) -> Result<HashMap<String, u64>, Box<dyn std::error::Error>>  {
+    fn resort_request(&self) -> Result<HashMap<String, u64>, Box<dyn std::error::Error>>  {
         let url = "https://account.ikonpass.com/api/v2/resorts";
         let resp = self.client.get(url).send()?;
         let body_str = resp.text().unwrap();
@@ -312,12 +312,45 @@ impl ApiPowSniper {
         }
         Ok(resort_ids)
     }
-    pub fn reservation_request(&self, token: &str) -> Result<(), Box<dyn std::error::Error>>  {
-        let url = "https://account.ikonpass.com/api/v2/reservation-availability/8";
-        let resp = self.client.get(url).send()?;
+    fn reservation_request(&self, id: u64) -> Result<String, Box<dyn std::error::Error>>  {
+        let url = format!("https://account.ikonpass.com/api/v2/reservation-availability/{}", id);
+        let resp = self.client.get(&url).send()?;
         let body_str = resp.text().unwrap();
-        let v: Value = serde_json::from_str(&body_str)?;
-        println!("{:#?}", v);
-        Ok(())
+        Ok(body_str)
+    }
+
+    fn get_unavailable_dates(&self, resort_ids: &HashMap<String, u64>, location: &str) -> Result<HashSet<String>, Box<dyn std::error::Error>>  { 
+        let id = match resort_ids.get(location) {
+            Some(id) => id,
+            None => return Err(format!("Invalid location - {}", location).into())
+        };
+        let response_str = self.reservation_request(*id)?;
+        let v: Value = serde_json::from_str(&response_str)?;
+        let data = &v["data"].as_array().expect("API response in unexpected format")[0].as_object().unwrap();
+        let blackout_dates = data["blackout_dates"].as_array().expect("API response in unexpected format");
+        let closed_dates = data["closed_dates"].as_array().expect("API response in unexpected format");
+        let unavailable_dates = data["unavailable_dates"].as_array().expect("API response in unexpected format");
+
+        let mut all_unavailable_dates = Vec::new();
+        all_unavailable_dates.extend(blackout_dates);
+        all_unavailable_dates.extend(closed_dates);
+        all_unavailable_dates.extend(unavailable_dates);
+
+        let mut month_map = HashMap::new();
+        month_map.insert("01", "Jan");
+        month_map.insert("02", "Feb");
+        month_map.insert("03", "Mar");
+
+        let mut final_set = HashSet::new();
+        for date in all_unavailable_dates.iter() {
+            let date_str = date.as_str().unwrap().to_string();
+            let split_date: Vec<&str> = date_str.split('-').collect();
+            let month = month_map.get(split_date[1]);
+            if month.is_some() {
+                let formatted_date = format!("{} {}", month.unwrap(), split_date[2]);
+                final_set.insert(formatted_date);
+            }
+        }
+        Ok(final_set)
     }
 }
