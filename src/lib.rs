@@ -264,7 +264,9 @@ impl ApiPowSniper {
         let locations = self.reservations.get_locations();
         let ping_token = self.ping()?;
         let session_token = self.session(ping_token)?;
-        self.reservation_request(session_token)?;
+        //self.reservation_request(&session_token)?;
+        let resort_ids = self.resort_request(&session_token)?;
+        println!("{:?}", resort_ids);
         Ok(())
     }
 
@@ -296,7 +298,21 @@ impl ApiPowSniper {
         Err("No token found".into())
     }
 
-    pub fn reservation_request(&self, toke: String) -> Result<(), Box<dyn std::error::Error>>  {
+    pub fn resort_request(&self, token: &str) -> Result<HashMap<String, u64>, Box<dyn std::error::Error>>  {
+        let url = "https://account.ikonpass.com/api/v2/resorts";
+        let resp = self.client.get(url).send()?;
+        let body_str = resp.text().unwrap();
+        let v: Value = serde_json::from_str(&body_str)?;
+        let resorts = &v["data"].as_array().expect("API response in unexpected format");
+        let mut resort_ids: HashMap<String, u64> = HashMap::new();
+        for resort in resorts.iter() {
+            let id = resort.as_object().unwrap().get("id").unwrap().as_u64().unwrap();
+            let name = resort.as_object().unwrap().get("name").unwrap().as_str().unwrap().to_string();     
+            resort_ids.insert(name, id);
+        }
+        Ok(resort_ids)
+    }
+    pub fn reservation_request(&self, token: &str) -> Result<(), Box<dyn std::error::Error>>  {
         let url = "https://account.ikonpass.com/api/v2/reservation-availability/8";
         let resp = self.client.get(url).send()?;
         let body_str = resp.text().unwrap();
