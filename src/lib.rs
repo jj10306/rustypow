@@ -70,7 +70,7 @@ pub struct ReservationInfo {
 impl ReservationInfo {
     pub fn new(path: &str) -> ReservationInfo {
         let mut inner: HashMap<String, HashMap<String, Vec<String>>> = HashMap::new();
-        let file = File::open("config/info.json").expect("Error openenign file");
+        let file = File::open(path).expect("Error openenign file");
         let reader = BufReader::new(file);
 
         // Read the JSON contents of the file as an instance of `User`.
