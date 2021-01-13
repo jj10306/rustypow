@@ -16,6 +16,7 @@ use lettre::{Message, SmtpTransport, Transport};
 use log;
 use percent_encoding::percent_decode;
 use reqwest::header::HeaderName;
+use chrono::{Datelike, Timelike, Utc};
 
 #[derive(Deserialize)]
 pub struct Config {
@@ -28,9 +29,8 @@ pub struct Config {
 impl Config {
     pub fn new(path: &str) -> Config {
         // Open the file in read-only mode with buffer.
-        let file = File::open("config/settings.json").expect("Error openenign file");
+        let file = File::open(path).expect("Error openenign file");
         let reader = BufReader::new(file);
-
         // Read the JSON contents of the file as an instance of `User`.
         let u = serde_json::from_reader(reader).expect("Error when parsing json");
         u
@@ -261,12 +261,33 @@ impl ApiPowSniper {
 
     pub fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
         let wait = time::Duration::from_secs(30);
-        let locations = self.reservations.get_locations();
-        let ping_token = self.ping()?;
-        let session_token = self.session(ping_token)?;
-        let resort_ids = self.resort_request()?;
-        let unavailable_dates = self.get_unavailable_dates(&resort_ids, "Winter Park Resort")?;
-        println!("{:?}", unavailable_dates);
+        loop {
+            let locations = self.reservations.get_locations();
+            let ping_token = self.ping()?;
+            let session_token = self.session(ping_token)?;
+            let resort_ids = self.resort_request()?;
+            log::debug!("{:?}", self.current_available);
+            for location in locations {
+                log::debug!("Running... Checking {}", location);
+                let unavailable_dates = self.get_unavailable_dates(&resort_ids, location)?;
+                let dates = self.reservations.get_dates(location);
+                for date in dates {
+                    let hash = location.to_owned() + date;
+                    if unavailable_dates.contains(date) {
+                        self.current_available.borrow_mut().remove(&hash); 
+                    } else {
+                        if self.current_available.borrow_mut().insert(hash) {
+                            let emails = self.reservations.get_emails(location, date);
+                            for email in emails.iter() {
+                                self.notify(email, location, date);
+                            }
+                            self.notify("jjohnson473@gatech.edu", location, date);
+                        }
+                    }
+                }
+            }
+            thread::sleep(wait);
+        }
         Ok(())
     }
 
@@ -342,15 +363,45 @@ impl ApiPowSniper {
         month_map.insert("03", "Mar");
 
         let mut final_set = HashSet::new();
+        let now = Utc::now();
         for date in all_unavailable_dates.iter() {
             let date_str = date.as_str().unwrap().to_string();
             let split_date: Vec<&str> = date_str.split('-').collect();
             let month = month_map.get(split_date[1]);
             if month.is_some() {
-                let formatted_date = format!("{} {}", month.unwrap(), split_date[2]);
-                final_set.insert(formatted_date);
+                // TODO: make this robust
+                if *month.unwrap() != "Jan" || split_date[2].parse::<u32>().unwrap() > now.day() {
+                    let formatted_date = format!("{} {}", month.unwrap(), split_date[2]);
+                    final_set.insert(formatted_date);
+                }
             }
         }
         Ok(final_set)
+    }
+
+    // TODO: move this function to a shared module for both pow snipers to use
+    fn notify(&self, email_addr: &str, location: &str, date: &str) -> WebDriverResult<()> {
+        let url = "https://account.ikonpass.com/en/myaccount/add-reservations/";
+        let email = Message::builder()
+            .from(format!("Ikon Pass Reservations <{}@gmail.com>", self.config.get_notify_username()).parse().unwrap())
+            .to(format!("<{}>", email_addr).parse().unwrap())
+            .subject(format!("{} Reservation", location))
+            .body(format!("{} at {} is now available!\n Click the link below to reserve your spot:\n {}", date, location, url))
+            .unwrap();
+
+        let creds = Credentials::new(self.config.get_notify_username().to_string(), self.config.get_notify_password().to_string());
+
+        // Open a remote connection to gmail
+        let mailer = SmtpTransport::relay("smtp.gmail.com")
+            .unwrap()
+            .credentials(creds)
+            .build();
+
+        // Send the email
+        match mailer.send(&email) {
+            Ok(_) => log::info!("Email sent successfully to {}!", email_addr),
+            Err(e) => log::error!("Could not send email: {:?}", e),
+        }
+        Ok(())
     }
 }
