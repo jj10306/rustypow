@@ -306,8 +306,8 @@ impl ApiPowSniper {
     fn session(&self, token: String) -> Result<String, Box<dyn std::error::Error>> { 
         let session_url = "https://account.ikonpass.com/session";
         let mut map = HashMap::new();
-        map.insert("email", "johnsonjakob99@gmail.com");
-        map.insert("password", "Johnson99");
+        map.insert("email", self.config.get_login_email());
+        map.insert("password", self.config.get_login_password());
         let session_resp = self.client.put(session_url).header("x-csrf-token", token).json(&map).send()?;
         for cookie in session_resp.cookies() {
             if cookie.name() == "_itw_iaa_prod_session" {
