@@ -1,3 +1,6 @@
+use crate::utils::config::Config;
+use crate::utils::reservation_info::ReservationInfo;
+
 use std::vec::Vec;
 use std::string::String;
 use std::boxed::Box;
@@ -17,8 +20,6 @@ use log;
 use percent_encoding::percent_decode;
 use reqwest::header::HeaderName;
 use chrono::{Datelike, Timelike, Utc};
-
-
 
 pub struct PowSniper {
     driver: WebDriver,

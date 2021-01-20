@@ -36,23 +36,23 @@ impl Config {
         u
     }
 
-    fn get_url(&self) -> &str {
+    pub fn get_url(&self) -> &str {
         &self.url
     }
 
-    fn get_login_email(&self) -> &str {
+    pub fn get_login_email(&self) -> &str {
         &self.login_email
     }
 
-    fn get_login_password(&self) -> &str {
+    pub fn get_login_password(&self) -> &str {
         &self.login_password
     }
 
-    fn get_notify_username(&self) -> &str {
+    pub fn get_notify_username(&self) -> &str {
         &self.notify_username
     }
 
-    fn get_notify_password(&self) -> &str {
+    pub fn get_notify_password(&self) -> &str {
         &self.notify_password
     }
 }
