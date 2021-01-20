@@ -1,8 +1,8 @@
-extern crate rustypow;
+mod utils;
+mod powsniper;
 
-use rustypow::powsniper::api::ApiPowSniper;
-use rustypow::utils::config::Config;
-use rustypow::utils::reservation_info::ReservationInfo;
+use powsniper::ApiPowSniper;
+use utils::{ ReservationInfo, Config };
 
 
 fn main() {
